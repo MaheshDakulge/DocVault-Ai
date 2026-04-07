@@ -1,0 +1,17 @@
+# DocsVault AI — FastAPI Backend Dependencies
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9       # For image file uploads
+python-jose[cryptography]==3.3.0  # JWT encode/decode
+passlib[bcrypt]==1.7.4        # Password hashing utility
+httpx==0.27.0                 # Async HTTP client (Gemini calls)
+google-generativeai==0.7.2    # Gemini 1.5 Flash SDK
+supabase==2.5.0               # Supabase Python client
+pydantic==2.7.1               # Request/response validation
+pydantic-settings==2.3.0      # Settings from .env
+python-dotenv==1.0.1          # Load .env file
+pillow==10.3.0                # Image processing
+slowapi==0.1.9                # Rate limiting middleware
+pytest==8.2.0                 # Testing
+pytest-asyncio==0.23.7        # Async test support
+httpx==0.27.0                 # Test client for FastAPI

@@ -1,0 +1,10 @@
+Resolving dependencies...
+Because share_plus >=8.0.1 <10.0.1 depends on web ^0.5.0 and drift >=2.19.2 depends on web ^1.0.0, share_plus >=8.0.1 <10.0.1 is incompatible with drift >=2.19.2.
+Because drift_flutter >=0.2.1 <0.2.8 depends on drift ^2.21.0 and drift_flutter >=0.2.8 depends on drift ^2.30.0, drift_flutter >=0.2.1 requires drift ^2.21.0.
+Thus, share_plus >=8.0.1 <10.0.1 is incompatible with drift_flutter >=0.2.1.
+So, because docsvault_ai depends on both drift_flutter ^0.2.1 and share_plus ^9.0.0, version solving failed.
+
+
+You can try the following suggestion to make the pubspec resolve:
+* Try upgrading your constraint on share_plus: flutter pub add share_plus:^12.0.2
+Failed to update packages.
