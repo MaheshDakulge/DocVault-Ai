@@ -1,7 +1,9 @@
-import google.generativeai as genai
-from core.config import settings
+import asyncio
 import json
 import re
+
+import google.generativeai as genai
+from core.config import settings
 
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
@@ -50,11 +52,16 @@ class GeminiVisionService:
     ) -> dict:
         """
         Send image to Gemini 1.5 Flash and return structured extraction result.
-        One API call replaces: OCR engine + document classifier + field extractor.
+        Runs in a thread pool via asyncio.to_thread so it never blocks the
+        FastAPI event loop.
         """
         image_part = {"mime_type": mime_type, "data": image_bytes}
 
-        response = self.model.generate_content([_SCAN_SYSTEM_PROMPT, image_part])
+        # ✅ Fix: run synchronous SDK call in thread pool — non-blocking
+        response = await asyncio.to_thread(
+            self.model.generate_content,
+            [_SCAN_SYSTEM_PROMPT, image_part],
+        )
 
         try:
             return json.loads(response.text)
@@ -76,7 +83,7 @@ class GeminiVisionService:
 
     async def answer_question(self, question: str, context_fields: list[dict]) -> str:
         """
-        Basic offline-style Q&A: Gemini reads extracted fields from SQLite
+        Contextual Q&A: Gemini reads extracted fields from SQLite
         and answers questions — no re-scanning of images needed.
         """
         context = "\n".join([f"{f['label']}: {f['value']}" for f in context_fields])
@@ -90,5 +97,6 @@ User question: {question}
 
 Answer concisely and helpfully. If the answer is not in the data, say so clearly.
 """
-        response = self.model.generate_content(prompt)
+        # ✅ Fix: non-blocking thread pool call
+        response = await asyncio.to_thread(self.model.generate_content, prompt)
         return response.text.strip()

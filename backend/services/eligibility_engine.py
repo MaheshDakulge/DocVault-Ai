@@ -1,3 +1,4 @@
+import asyncio
 import json
 import google.generativeai as genai
 from core.config import settings
@@ -58,13 +59,16 @@ class EligibilityEngine:
     async def match(self, context_fields: list[dict]) -> EligibilityResponse:
         """
         Matches user's extracted document fields against 15 government schemes.
-        Gemini reads all uploaded documents together — nobody in India has built
-        this in a consumer app.
+        Runs in a thread pool via asyncio.to_thread so it never blocks the
+        FastAPI event loop.
         """
-        context = "\n".join([f"{f.get('label', '')}: {f.get('value', '')}" for f in context_fields])
+        context = "\n".join(
+            [f"{f.get('label', '')}: {f.get('value', '')}" for f in context_fields]
+        )
         prompt = _ELIGIBILITY_PROMPT.format(context=context)
 
-        response = self.model.generate_content(prompt)
+        # ✅ Fix: non-blocking thread pool call
+        response = await asyncio.to_thread(self.model.generate_content, prompt)
 
         try:
             schemes_data = json.loads(response.text)
@@ -72,7 +76,6 @@ class EligibilityEngine:
         except Exception:
             schemes = []
 
-        # Build a human-readable summary
         if schemes:
             top = schemes[0]
             summary = (

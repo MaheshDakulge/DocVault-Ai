@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../core/router/route_names.dart';
 import '../../core/theme/colors.dart';
+import '../../domain/providers/auth_provider.dart';
 import '../common_widgets/glass_card.dart';
 
 /// Login Screen — minimal purple aesthetic with Google Sign-In
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends ConsumerWidget {
   const LoginScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    // Listen to auth state to show loading spinner if needed
+    final authState = ref.watch(authProvider);
+    final isLoading = authState.isLoading;
+
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -48,11 +56,33 @@ class LoginScreen extends StatelessWidget {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            // TODO: Implement Supabase Google Sign-In (Day 3)
-                          },
-                          icon: const Icon(Icons.g_mobiledata_rounded, size: 24),
-                          label: const Text('Continue with Google'),
+                          onPressed: isLoading
+                              ? null
+                              : () async {
+                                  await ref.read(authProvider.notifier).signInWithGoogle();
+                                  
+                                  // Check if the user is now signed in successfully
+                                  if (context.mounted) {
+                                    if (ref.read(isSignedInProvider)) {
+                                      context.go(RouteNames.home);
+                                    } else if (ref.read(authProvider).hasError) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Sign in failed: ${ref.read(authProvider).error}'),
+                                          backgroundColor: AppColors.error,
+                                        ),
+                                      );
+                                    }
+                                  }
+                                },
+                          icon: isLoading 
+                              ? const SizedBox(
+                                  width: 24, 
+                                  height: 24, 
+                                  child: CircularProgressIndicator(color: AppColors.onPrimary, strokeWidth: 2)
+                                )
+                              : const Icon(Icons.g_mobiledata_rounded, size: 24),
+                          label: Text(isLoading ? 'Connecting...' : 'Continue with Google'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                             foregroundColor: AppColors.onPrimary,

@@ -21,6 +21,23 @@ class SecureStorage {
   static Future<void> saveUserId(String id)   => _storage.write(key: _keyUserId, value: id);
   static Future<String?> getUserId()          => _storage.read(key: _keyUserId);
 
+  // App PIN
+  static const _keyAppPin = 'app_pin';
+  static Future<void> saveAppPin(String pin) => _storage.write(key: _keyAppPin, value: pin);
+  static Future<String?> getAppPin()         => _storage.read(key: _keyAppPin);
+  static Future<void> deleteAppPin()         => _storage.delete(key: _keyAppPin);
+
+  // Biometric lock preference
+  static const _keyBiometricLockEnabled = 'biometric_lock_enabled';
+  static Future<void> setBiometricLockEnabled(bool enabled) =>
+      _storage.write(key: _keyBiometricLockEnabled, value: enabled.toString());
+  static Future<bool> isBiometricLockEnabled() async {
+    final value = await _storage.read(key: _keyBiometricLockEnabled);
+    return value == 'true';
+  }
+  static Future<void> deleteBiometricLockEnabled() =>
+      _storage.delete(key: _keyBiometricLockEnabled);
+
   // Onboarding flag
   static Future<void> setOnboarded()          => _storage.write(key: _keyOnboarded, value: 'true');
   static Future<bool> isOnboarded() async {

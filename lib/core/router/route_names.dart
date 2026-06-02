@@ -8,6 +8,8 @@ class RouteNames {
   static const String home           = '/home';
   static const String scan           = '/scan';
   static const String scanResult     = '/scan-result';
+  static const String pinSetup       = '/pin-setup';
+  static const String pinLogin       = '/pin-login';
   static const String search         = '/search';
   static const String assistant      = '/assistant';
   static const String eligibility    = '/eligibility';

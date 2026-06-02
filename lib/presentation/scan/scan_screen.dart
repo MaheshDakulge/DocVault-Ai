@@ -1,164 +1,157 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:file_picker/file_picker.dart' as fp;
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import '../../core/theme/colors.dart';
 import '../../core/router/route_names.dart';
-import 'dart:developer' as dev;
+import '../../domain/providers/scan_queue_provider.dart';
+import '../common_widgets/vault_app_bar.dart';
 
-class ScanScreen extends StatefulWidget {
+class ScanScreen extends ConsumerStatefulWidget {
   const ScanScreen({super.key});
 
   @override
-  State<ScanScreen> createState() => _ScanScreenState();
+  ConsumerState<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends State<ScanScreen> {
-  CameraController? _controller;
-  List<CameraDescription> _cameras = [];
-  bool _isInit = false;
-  bool _isProcessing = false;
+class _ScanScreenState extends ConsumerState<ScanScreen> {
+  bool _isPicking = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _initCamera();
-  }
+  Future<void> _scanWithCamera() async {
+    if (_isPicking) return;
+    setState(() => _isPicking = true);
 
-  Future<void> _initCamera() async {
     try {
-      _cameras = await availableCameras();
-      if (_cameras.isEmpty) return;
+      final pictures = await CunningDocumentScanner.getPictures() ?? [];
+      
+      if (mounted) setState(() => _isPicking = false);
 
-      _controller = CameraController(
-        _cameras.first,
-        ResolutionPreset.high,
-        enableAudio: false,
-      );
-
-      await _controller!.initialize();
-      if (mounted) setState(() => _isInit = true);
-    } catch (e) {
-      dev.log("Camera init failed: $e");
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  Future<void> _takePicture() async {
-    if (_controller == null || !_controller!.value.isInitialized || _isProcessing) {
-      return;
-    }
-
-    setState(() => _isProcessing = true);
-    try {
-      final xFile = await _controller!.takePicture();
-      // We pass the local path to the result screen.
-      // In Day 2 architecture, the Result Screen loads the image and calls the API
-      // so the user has immediate feedback instead of waiting on the camera screen.
-      if (mounted) {
-        context.push(RouteNames.scanResult, extra: {'imagePath': xFile.path});
+      if (pictures.isNotEmpty) {
+        final files = pictures.map((p) => File(p)).toList();
+        ref.read(scanQueueProvider.notifier).addFiles(files);
+        // After queueing, redirect to the new queue screen (scan result review screen)
+        if (mounted) context.push(RouteNames.scanResult);
       }
     } catch (e) {
-      dev.log("Failed to capture: $e");
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
+      if (mounted) {
+        setState(() => _isPicking = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Scanner error: $e')));
+      }
+    }
+  }
+
+  Future<void> _pickFiles() async {
+    if (_isPicking) return;
+    setState(() => _isPicking = true);
+
+    try {
+      final result = await fp.FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: fp.FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      );
+
+      if (mounted) setState(() => _isPicking = false);
+
+      if (result != null && result.paths.isNotEmpty) {
+        final files = result.paths.where((p) => p != null).map((p) => File(p!)).toList();
+        ref.read(scanQueueProvider.notifier).addFiles(files);
+        if (mounted) context.push(RouteNames.scanResult);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isPicking = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('File picker error: $e')));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInit || _controller == null) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
-      );
-    }
-
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Camera Preview
-          CameraPreview(_controller!),
+      backgroundColor: AppColors.surface,
+      appBar: const VaultAppBar(title: 'Add Documents'),
+      body: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Column(
+          children: [
+            _ActionCard(
+              icon: Icons.document_scanner_rounded,
+              title: 'Scan Pages',
+              subtitle: 'Use camera to auto-crop physical documents',
+              onTap: _scanWithCamera,
+            ),
+            const SizedBox(height: 16),
+            _ActionCard(
+              icon: Icons.file_upload_outlined,
+              title: 'Import Files',
+              subtitle: 'Select PDFs or images from your device',
+              onTap: _pickFiles,
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'Documents are processed in the background and will appear in your review queue.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-          // Optional: Overlay rectangle for document alignment
-          Center(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 24),
-              height: MediaQuery.of(context).size.height * 0.6,
+class _ActionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _ActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.outlineVariant.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.white.withValues(alpha: 0.5), width: 2),
-                borderRadius: BorderRadius.circular(16),
+                color: AppColors.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
               ),
-            ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(
-                  duration: 2.seconds,
-                  color: AppColors.primary.withValues(alpha: 0.3),
-                ),
-          ),
-
-          // Top App Bar Elements (overlay)
-          Positioned(
-            top: 50,
-            left: 16,
-            right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  onPressed: () => context.pop(),
-                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black45,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text(
-                    'Position document inside rectangle',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                  ),
-                ),
-                const SizedBox(width: 40), // Balance the close button
-              ],
+              child: Icon(icon, color: AppColors.primary, size: 28),
             ),
-          ),
-
-          // Status & Capture Button
-          Positioned(
-            bottom: 40,
-            left: 0,
-            right: 0,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_isProcessing)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 20),
-                    child: CircularProgressIndicator(color: AppColors.primary),
-                  ),
-                GestureDetector(
-                  onTap: _takePicture,
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                      color: _isProcessing ? AppColors.outlineVariant : AppColors.primary.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ),
-              ],
+            const SizedBox(width: 20),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(subtitle, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.onSurfaceVariant)),
+                ],
+              ),
             ),
-          ),
-        ],
+            const Icon(Icons.chevron_right_rounded, color: AppColors.onSurfaceVariant),
+          ],
+        ),
       ),
     );
   }

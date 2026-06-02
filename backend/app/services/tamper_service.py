@@ -25,17 +25,14 @@ def compute_hash(file_bytes: bytes) -> str:
 def verify_integrity(file_bytes: bytes, stored_hash: str) -> bool:
     """
     Re-hash *file_bytes* and compare against *stored_hash*.
-
-    Returns True if the file is unmodified, False if it has been tampered with.
+    Returns True if the file is unmodified, False if tampered.
     """
-    current_hash = compute_hash(file_bytes)
-    return current_hash == stored_hash
+    return compute_hash(file_bytes) == stored_hash
 
 
 def check_duplicate(file_hash: str, user_id: str) -> Optional[dict]:
     """
     Check whether *user_id* already owns a document with the same hash.
-
     Returns the existing document dict if a duplicate is found, else None.
     """
     try:
@@ -44,7 +41,7 @@ def check_duplicate(file_hash: str, user_id: str) -> Optional[dict]:
             supabase.table("documents")
             .select("id", "filename", "category")
             .eq("user_id", user_id)
-            .eq("fileHash", file_hash)
+            .eq("file_hash", file_hash)   # ✅ fixed: was "fileHash"
             .execute()
         )
         if result.data:
@@ -67,9 +64,9 @@ def flag_tampered(document_id: str, reason: str) -> None:
     try:
         supabase.table("documents").update(
             {
-                "is_tampered": True,
-                "tamper_flags": tamper_flag,
-                "updated_at": now,
+                "is_tampered":  True,
+                "tamper_flags": tamper_flag,   # ✅ column now exists in DB
+                "updated_at":   now,
             }
         ).eq("id", document_id).execute()
     except Exception as exc:
@@ -80,9 +77,9 @@ def flag_tampered(document_id: str, reason: str) -> None:
         supabase.table("activity_log").insert(
             {
                 "document_id": document_id,
-                "action": "tamper_detected",
-                "detail": reason,
-                "created_at": now,
+                "action":      "tamper_detected",
+                "detail":      reason,
+                "created_at":  now,
             }
         ).execute()
     except Exception as exc:

@@ -1,16 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/router/route_names.dart';
+import '../../../domain/providers/document_provider.dart';
+import 'document_card.dart';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../domain/providers/database_providers.dart';
-import '../../../data/local/database.dart';
-
-/// Document tree widget — groups documents by category.
-/// Reads from SQLite offline. No internet required.
-/// Staggered animation on each card via flutter_animate.
+/// Document tree widget — reactive stream from SQLite, 100% offline.
+/// Staggered fade+slide animation per card.
 class DocumentTreeWidget extends ConsumerWidget {
   final String? selectedCategory;
 
@@ -18,62 +16,57 @@ class DocumentTreeWidget extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final documentDao = ref.watch(documentDaoProvider);
-    
-    return StreamBuilder<List<Document>>(
-      stream: documentDao.watchAllDocuments(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SliverToBoxAdapter(
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        
-        final docs = snapshot.data ?? [];
-        final filtered = selectedCategory == null 
-            ? docs 
-            : docs.where((d) => d.category == selectedCategory).toList();
+    final docsAsync = selectedCategory != null
+        ? ref.watch(documentsByCategoryProvider(selectedCategory))
+        : ref.watch(documentsStreamProvider);
 
-        if (filtered.isEmpty) {
-          return SliverFillRemaining(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.folder_open_rounded,
-                      size: 64, color: AppColors.outlineVariant),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No documents yet',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(color: AppColors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Tap the Scan button to add your first document',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: AppColors.outlineVariant),
-                  ),
-                ],
-              ),
+    return docsAsync.when(
+      loading: () => const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.only(top: 60),
+          child: Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          ),
+        ),
+      ),
+      error: (e, _) => SliverToBoxAdapter(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text('Error loading documents: $e',
+                style: const TextStyle(color: AppColors.error)),
+          ),
+        ),
+      ),
+      data: (docs) {
+        if (docs.isEmpty) {
+          return const SliverFillRemaining(child: _EmptyState());
+        }
+
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final doc = docs[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: DocumentCard(
+                    document: doc,
+                    onTap: () =>
+                        context.push('${RouteNames.documentViewer}/${doc.id}'),
+                  )
+                      .animate(delay: Duration(milliseconds: index * 55))
+                      .fadeIn(duration: 280.ms)
+                      .slideY(
+                          begin: 0.06,
+                          end: 0,
+                          duration: 280.ms,
+                          curve: Curves.easeOut),
+                );
+              },
+              childCount: docs.length,
             ),
-          );
-        }
-
-        return SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final doc = filtered[index];
-              return DocumentCard(doc: doc)
-                  .animate(delay: Duration(milliseconds: index * 60))
-                  .fadeIn(duration: 300.ms)
-                  .slideY(begin: 0.06, end: 0, duration: 300.ms, curve: Curves.easeOut);
-            },
-            childCount: filtered.length,
           ),
         );
       },
@@ -81,61 +74,32 @@ class DocumentTreeWidget extends ConsumerWidget {
   }
 }
 
-/// Individual document card — lifted on surface with no dividers.
-class DocumentCard extends StatelessWidget {
-  final Document doc;
-  const DocumentCard({super.key, required this.doc});
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: Material(
-        color: AppColors.surfaceContainerLowest,
-        borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => context.push('${RouteNames.documentViewer}/${doc.id}'),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                // Thumbnail or icon placeholder
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryFixed,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.description_rounded,
-                      color: AppColors.primary, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(doc.filename,
-                          style: theme.textTheme.titleSmall),
-                      const SizedBox(height: 2),
-                      Text(doc.category,
-                          style: theme.textTheme.labelMedium),
-                    ],
-                  ),
-                ),
-                if (doc.isTampered == true)
-                  const Icon(Icons.warning_rounded,
-                      color: AppColors.tertiary, size: 18),
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.outlineVariant, size: 20),
-              ],
-            ),
-          ),
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(Icons.folder_open_rounded,
+            size: 72, color: AppColors.outlineVariant),
+        const SizedBox(height: 16),
+        Text(
+          'Your vault is empty',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: AppColors.onSurfaceVariant,
+              ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Text(
+          'Tap the Scan button below\nto add your first document',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AppColors.outlineVariant,
+              ),
+        ),
+      ],
     );
   }
 }

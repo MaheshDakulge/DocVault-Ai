@@ -110,8 +110,8 @@ async def scan_document(
 
     # ── Store result in job for confirm step ──────────────────────────────────
     stored_payload = json.dumps({
-        "storagePath": storage_path,
-        "fileHash": file_hash,
+        "storage_path": storage_path,
+        "file_hash": file_hash,
         **gemini_result,
     })
     _update_job(step=3, progress_pct=90, error_message=stored_payload)
@@ -176,8 +176,8 @@ async def confirm_scan(
         "id": str(uuid.uuid4()),  # explicit UUID — avoids schema cache issues
         "user_id": user_id,
         "filename": job.get("filename", "document"),
-        "storagePath": storage_path,
-        "fileHash": file_hash,
+        "storage_path": storage_path,
+        "file_hash": file_hash,
         "category": category,
         "subcategory": gemini_data.get("subcategory"),
         "doc_type": gemini_data.get("doc_type"),
@@ -246,10 +246,21 @@ async def confirm_scan(
     except Exception:
         pass
 
-    return DocumentResponse(
-        **{k: doc.get(k) for k in DocumentResponse.model_fields},
-        fields=[FieldItem(**f) for f in field_rows],
-    )
+    field_items = [
+        FieldItem(
+            label=f["label"],
+            value=f["value"],
+            confidence=f.get("confidence", 1.0),
+            is_copyable=f.get("is_copyable", True),
+        )
+        for f in field_rows
+    ]
+    safe_doc = {
+        k: doc.get(k)
+        for k in DocumentResponse.model_fields
+        if k != "fields"
+    }
+    return DocumentResponse(**safe_doc, fields=field_items)
 
 
 # ─────────────────────────────── GET /scan/status/{job_id} ───────────────────
